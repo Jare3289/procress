@@ -2586,10 +2586,17 @@
                 }
                 // Mark opted-out students
                 if (activeOptOuts.has(String(s.id))) {
-                    s.status = 'ปฏิเสธสิทธิ์';
-                    s.assignedPlan = null;
-                    s.assignedRoom = '-';
-                    s.statusCode = '-';
+                    // ปฏิเสธสิทธิ์ = คงที่เดิม (ไม่ย้ายไปบัญชีสำรองอัตโนมัติ)
+                    const hadOriginalSeat = s.origPlan && s.origPlan !== '-' && s.origRoom && s.origRoom !== '-';
+                    if (hadOriginalSeat) {
+                        s.assignedPlan = s.origPlan;
+                        s.assignedRoom = s.origRoom;
+                        s.statusCode = s.origCode || s.statusCode || '-';
+                        s.status = 'ปฏิเสธสิทธิ์ (คงที่เดิม)';
+                    } else {
+                        // ถ้าเดิมไม่มีที่นั่ง ให้คงสถานะเดิมในบัญชีเดิม (เช่น สำรอง)
+                        s.status = s.status && s.status !== '-' ? s.status : 'ปฏิเสธสิทธิ์';
+                    }
                 }
                 return s;
             });

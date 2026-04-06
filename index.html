@@ -1788,7 +1788,7 @@
 
                 <div class="card shadow-md border-t-4 border-orange-500 flex flex-col overflow-hidden">
                     <div class="bg-orange-50 px-5 py-3 border-b border-orange-100 flex justify-between items-center">
-                        <h3 class="font-bold text-orange-900 text-sm italic">รายชื่อสำรองเรียงตามคะแนน Merit</h3>
+                        <h3 class="font-bold text-orange-900 text-sm italic">รายชื่อสำรองเรียงตามคะแนน Merit (เฉพาะผู้มีสิทธิ์รอเลื่อนเข้าแผน)</h3>
                         <span id="waitlist-total-count"
                             class="bg-white text-orange-700 px-3 py-1 rounded-full text-[10px] font-black border border-orange-200 shadow-sm">0
                             คน</span>
@@ -1846,6 +1846,37 @@
                                 <tr>
                                     <td colspan="3" class="py-12 text-center text-slate-300 italic">
                                         ไม่มีข้อมูลผู้สละสิทธิ์</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card shadow-md border-t-4 border-amber-500 overflow-hidden anim-fade-in bg-white">
+                    <div class="bg-amber-50 px-5 py-4 border-b border-amber-100 flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                                <i class="fas fa-ban text-amber-600"></i> บัญชีรายชื่อผู้ปฏิเสธสิทธิ์การเลื่อน (Reject Upgrade)
+                            </h3>
+                            <p class="text-[10px] text-amber-700/70 mt-0.5">ผู้สมัครกลุ่มนี้คงสิทธิ์ที่เดิม และไม่ถูกนับในบัญชีสำรองรอเลื่อนรอบนี้</p>
+                        </div>
+                        <span id="mgmt-reject-count"
+                            class="bg-white text-amber-700 px-3 py-1 rounded-full text-[11px] font-black border border-amber-200 shadow-sm">0
+                            คน</span>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar max-h-[400px]">
+                        <table class="w-full text-[11px] whitespace-nowrap border-separate border-spacing-0">
+                            <thead class="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 shadow-sm">
+                                <tr class="text-slate-500 uppercase tracking-widest text-[9px] font-black">
+                                    <th class="w-24 py-3 border-r border-slate-100 text-center">รหัสประจำตัว</th>
+                                    <th class="text-left px-5 py-3 border-r border-slate-100">ชื่อ-นามสกุล</th>
+                                    <th class="text-center px-5 py-3 border-r border-slate-100">คงสิทธิ์ที่เดิม</th>
+                                    <th class="text-left px-5 py-3">หมายเหตุ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manage-reject-body">
+                                <tr>
+                                    <td colspan="4" class="py-12 text-center text-slate-300 italic">
+                                        ไม่มีข้อมูลผู้ปฏิเสธสิทธิ์</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -2333,6 +2364,7 @@
                     origPlan: s.assignedPlan, // Store for opt-out locking
                     origRoom: s.assignedRoom,
                     origCode: s.statusCode,
+                    origStatus: s.status || '-',
                     status: '-',
                     waitlistRanks: {},
                     isDropped: override?.type === 'dropped'
@@ -2525,7 +2557,7 @@
 
             // Unified list of anyone NOT seated
             const globalWaitPool = pool
-                .filter(s => !s.assignedPlan && !isExcluded(s))
+                .filter(s => !s.assignedPlan && !isExcluded(s) && !activeOptOuts.has(String(s.id)))
                 .sort(meritSort);
 
             globalWaitPool.forEach((s, idx) => {
@@ -2585,11 +2617,21 @@
                     s.statusCode = '-';
                 }
                 // Mark opted-out students
-                if (activeOptOuts.has(String(s.id))) {
-                    s.status = 'ปฏิเสธสิทธิ์';
-                    s.assignedPlan = null;
-                    s.assignedRoom = '-';
-                    s.statusCode = '-';
+                if (!s.isDropped && activeOptOuts.has(String(s.id))) {
+                    // ปฏิเสธสิทธิ์ = คงที่เดิม (ไม่ย้ายไปบัญชีสำรองอัตโนมัติ)
+                    const hadOriginalSeat = s.origPlan && s.origPlan !== '-' && s.origRoom && s.origRoom !== '-';
+                    if (hadOriginalSeat) {
+                        s.assignedPlan = s.origPlan;
+                        s.assignedRoom = s.origRoom;
+                        s.statusCode = s.origCode || s.statusCode || '-';
+                        s.status = 'ปฏิเสธสิทธิ์ (คงที่เดิม)';
+                    } else {
+                        // ถ้าเดิมไม่มีที่นั่ง ให้คงอยู่บัญชีเดิม (เช่น สำรอง) และข้ามการเลื่อนรอบนี้
+                        s.assignedPlan = s.origPlan || null;
+                        s.assignedRoom = s.origRoom || '-';
+                        s.statusCode = s.origCode || '-';
+                        s.status = (s.origStatus && s.origStatus !== '-') ? s.origStatus : 'สำรอง';
+                    }
                 }
                 return s;
             });
@@ -4671,7 +4713,10 @@
             }
             const countLabel = document.getElementById('waitlist-total-count');
 
-            const data = waitlists["รวมทั้งหมด"] || [];
+            const data = (waitlists["รวมทั้งหมด"] || []).filter(item => {
+                const st = item.status || '';
+                return !st.includes('สละสิทธิ์') && !st.includes('ปฏิเสธสิทธิ์');
+            });
             tbody.innerHTML = '';
 
             if (data.length === 0) {
@@ -4722,6 +4767,7 @@
 
             const all = State.results.allStudents;
             const tbody = document.getElementById('mgmt-table-body');
+            const extraSection = document.getElementById('mgmt-extra-sections');
             tbody.innerHTML = '';
 
             // Statistics
@@ -4935,21 +4981,27 @@
             }
 
             const waivedBody = document.getElementById('manage-waived-body');
+            const rejectBody = document.getElementById('manage-reject-body');
             waivedBody.innerHTML = '';
+            rejectBody.innerHTML = '';
 
             let waivedCount = 0;
+            let rejectCount = 0;
 
-            const remainder = all.filter(s => !s.assignedRoom || !s.assignedPlan || !planCodes[s.assignedPlan] || s.status.includes('สละสิทธิ์'));
+            const remainder = all.filter(s =>
+                !s.assignedRoom || !s.assignedPlan || !planCodes[s.assignedPlan] ||
+                (s.status || '').includes('สละสิทธิ์') || (s.status || '').includes('ปฏิเสธสิทธิ์')
+            );
 
             if (remainder.length > 0) {
-                document.getElementById('mgmt-extra-tables').style.display = 'grid';
+                if (extraSection) extraSection.classList.remove('hidden');
 
                 // Show Plan-based Waitlists directly in management tab too
                 if (document.getElementById('waitlists-section')) {
                     document.getElementById('waitlists-section').classList.remove('hidden');
                 }
 
-                remainder.filter(s => s.status.includes('สละสิทธิ์')).forEach(s => {
+                remainder.filter(s => (s.status || '').includes('สละสิทธิ์')).forEach(s => {
                     waivedCount++;
                     const tr = document.createElement('tr');
                     tr.className = "border-b border-red-50 hover:bg-red-50/50";
@@ -4960,11 +5012,35 @@
                     `;
                     waivedBody.appendChild(tr);
                 });
+
+                remainder.filter(s => (s.status || '').includes('ปฏิเสธสิทธิ์')).forEach(s => {
+                    rejectCount++;
+                    const currentLoc = (s.assignedPlan && s.assignedRoom && s.assignedRoom !== '-')
+                        ? `${s.assignedPlan} (${s.assignedRoom})`
+                        : 'บัญชีเดิม/สำรอง';
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-amber-50 hover:bg-amber-50/50";
+                    tr.innerHTML = `
+                        <td class="text-center font-mono font-bold text-slate-700">${s.id || '-'}</td>
+                        <td class="text-left font-bold text-slate-800">${s.name || '-'}</td>
+                        <td class="text-center text-[10px] font-bold text-amber-700">${currentLoc}</td>
+                        <td class="text-left text-[10px] text-slate-600">${s.remark || '-'}</td>
+                    `;
+                    rejectBody.appendChild(tr);
+                });
             } else {
                 if (extraSection) extraSection.classList.add('hidden');
             }
 
+            if (waivedCount === 0) {
+                waivedBody.innerHTML = `<tr><td colspan="3" class="py-12 text-center text-slate-300 italic">ไม่มีข้อมูลผู้สละสิทธิ์</td></tr>`;
+            }
+            if (rejectCount === 0) {
+                rejectBody.innerHTML = `<tr><td colspan="4" class="py-12 text-center text-slate-300 italic">ไม่มีข้อมูลผู้ปฏิเสธสิทธิ์</td></tr>`;
+            }
+
             document.getElementById('mgmt-waived-count').innerText = `${waivedCount} คน`;
+            document.getElementById('mgmt-reject-count').innerText = `${rejectCount} คน`;
 
             // Populate individual waitlist tables for Science, Talent, Math, Language
             if (State.results?.waitlists) {
@@ -6440,12 +6516,16 @@
                 tempOptOuts.delete(currentStudentIdForManage);
             } else if (action === 'drop') {
                 tempOverridesMap.set(currentStudentIdForManage, { type: 'dropped' });
+                tempOptOuts.delete(currentStudentIdForManage);
             } else if (action === 'reject') {
                 tempOptOuts.set(currentStudentIdForManage, { bypassed: true });
             }
 
             // Run simulation (รวม bypass จากรอบนี้ด้วย)
             const mergedOptOuts = new Map([...State.optOuts, ...tempOptOuts]);
+            if (action === 'drop' || action === 'auto') {
+                mergedOptOuts.delete(currentStudentIdForManage);
+            }
             const simRes = runQueueWithRoomsEngine(undefined, tempOverridesMap, mergedOptOuts);
             if (!simRes || !simRes.allStudents) {
                 showToast("จำลองล้มเหลว", "เครื่องยนต์ประมวลผลขัดข้อง", "error");
@@ -6607,7 +6687,7 @@
 
             // 🔥 สำคัญ: อัปเดต State.optOuts จากทั้งรอบนี้และที่สะสมมา
             tempOptOuts.forEach((v, k) => State.optOuts.set(k, v));
-            if (action === 'auto') State.optOuts.delete(currentStudentIdForManage);
+            if (action === 'auto' || action === 'drop') State.optOuts.delete(currentStudentIdForManage);
             else if (action === 'reject') State.optOuts.set(currentStudentIdForManage, { bypassed: true });
 
             tempOptOuts = new Map();

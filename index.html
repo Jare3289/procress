@@ -2617,7 +2617,7 @@
                     s.statusCode = '-';
                 }
                 // Mark opted-out students
-                if (activeOptOuts.has(String(s.id))) {
+                if (!s.isDropped && activeOptOuts.has(String(s.id))) {
                     // ปฏิเสธสิทธิ์ = คงที่เดิม (ไม่ย้ายไปบัญชีสำรองอัตโนมัติ)
                     const hadOriginalSeat = s.origPlan && s.origPlan !== '-' && s.origRoom && s.origRoom !== '-';
                     if (hadOriginalSeat) {
@@ -6516,12 +6516,16 @@
                 tempOptOuts.delete(currentStudentIdForManage);
             } else if (action === 'drop') {
                 tempOverridesMap.set(currentStudentIdForManage, { type: 'dropped' });
+                tempOptOuts.delete(currentStudentIdForManage);
             } else if (action === 'reject') {
                 tempOptOuts.set(currentStudentIdForManage, { bypassed: true });
             }
 
             // Run simulation (รวม bypass จากรอบนี้ด้วย)
             const mergedOptOuts = new Map([...State.optOuts, ...tempOptOuts]);
+            if (action === 'drop' || action === 'auto') {
+                mergedOptOuts.delete(currentStudentIdForManage);
+            }
             const simRes = runQueueWithRoomsEngine(undefined, tempOverridesMap, mergedOptOuts);
             if (!simRes || !simRes.allStudents) {
                 showToast("จำลองล้มเหลว", "เครื่องยนต์ประมวลผลขัดข้อง", "error");
@@ -6683,7 +6687,7 @@
 
             // 🔥 สำคัญ: อัปเดต State.optOuts จากทั้งรอบนี้และที่สะสมมา
             tempOptOuts.forEach((v, k) => State.optOuts.set(k, v));
-            if (action === 'auto') State.optOuts.delete(currentStudentIdForManage);
+            if (action === 'auto' || action === 'drop') State.optOuts.delete(currentStudentIdForManage);
             else if (action === 'reject') State.optOuts.set(currentStudentIdForManage, { bypassed: true });
 
             tempOptOuts = new Map();

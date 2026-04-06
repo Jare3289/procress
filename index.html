@@ -1939,6 +1939,10 @@
                             &rarr;
                             <b>คะแนนจากมากไปน้อย</b></span>
                     </div>
+                    <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800">
+                        <i class="fas fa-pen mr-1"></i>
+                        นักเรียนเข้าใหม่ต้องกรอกรหัสในคอลัมน์ <b>ออกใหม่</b> เองก่อนรัน (ระบบจะไม่รันเลขอัตโนมัติ)
+                    </div>
                 </div>
 
                 <div id="p3-preview-container" class="mt-8 space-y-4 hidden anim-fade-in">
@@ -6761,9 +6765,8 @@
             studentList.innerHTML = '';
             progressBar.style.width = '0%';
             progressText.textContent = '0%';
-            currentIdDisplay.textContent = startId;
+            currentIdDisplay.textContent = '-';
 
-            let currentId = parseInt(startId);
             const totalStudents = students.length;
 
             // สร้างรายการนักเรียน
@@ -6785,7 +6788,7 @@
                         <i class="fas fa-check-circle text-slate-300" style="font-size: 18px;"></i>
                         <div class="text-right">
                             <div class="text-2xl font-black text-slate-400" id="id-${index}">-</div>
-                            <div class="text-[10px] text-slate-400 font-bold">${isCNP ? 'รหัสเดิม' : 'รหัสใหม่'}</div>
+                            <div class="text-[10px] text-slate-400 font-bold">${isCNP ? 'รหัสเดิม' : 'รหัสที่กรอกเอง'}</div>
                         </div>
                     </div>
                 `;
@@ -6802,7 +6805,7 @@
                 if (isCNP) {
                     idToShow = students[i].oldStudentId;
                 } else {
-                    idToShow = currentId++;
+                    idToShow = students[i].newIdDisplay || '(ยังไม่กรอก)';
                 }
 
                 // Highlight student ปัจจุบัน (gradient + glow + scale)
@@ -6826,7 +6829,7 @@
                 const progress = ((i + 1) / totalStudents) * 100;
                 progressBar.style.width = `${progress}%`;
                 progressText.textContent = Math.round(progress) + '%';
-                currentIdDisplay.textContent = currentId;
+                currentIdDisplay.textContent = idToShow;
 
                 // Scroll ให้ตัวปัจจุบันอยู่ตรงกลาง
                 studentDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -6850,7 +6853,6 @@
                     prevId.className = 'text-2xl font-black text-green-600';
                 }
 
-                currentId++;
             }
 
             // เสร็จแล้วรออีก 50ms
@@ -6879,6 +6881,7 @@
             const sortByAlphabetCheckbox = document.getElementById('sort-by-alphabet');
             const sortByIdSourceCheckbox = document.getElementById('sort-by-id-source');
             const startId = startIdInput ? parseInt(startIdInput.value) : 10001;
+            const safeStartId = (!startId || startId < 1) ? 10001 : startId;
             const sortByAlphabet = sortByAlphabetCheckbox ? sortByAlphabetCheckbox.checked : false;
             const preferExistingFirst = sortByIdSourceCheckbox ? sortByIdSourceCheckbox.checked : false;
 
@@ -6888,8 +6891,8 @@
             document.getElementById('p3-preview-container').classList.add('hidden');
 
             // Start process
-            await showPhase3Animation(p3TempStudents, startId);
-            const msg = await savePhase3Results(p3TempStudents, startId, sortByAlphabet, preferExistingFirst);
+            await showPhase3Animation(p3TempStudents, safeStartId);
+            const msg = await savePhase3Results(p3TempStudents, safeStartId, sortByAlphabet, preferExistingFirst);
 
             showToast("สำเร็จ", msg, "success");
             const statusBox = document.getElementById('p3-status-box');
@@ -6909,10 +6912,7 @@
             const sortByAlphabet = sortByAlphabetCheckbox ? sortByAlphabetCheckbox.checked : false;
             const preferExistingFirst = sortByIdSourceCheckbox ? sortByIdSourceCheckbox.checked : false;
 
-            if (!startId || startId < 1) {
-                showToast("ข้อมูลไม่ถูกต้อง", "กรุณาระบุเลขประจำตัวเริ่มต้นที่ถูกต้อง", "warning");
-                return;
-            }
+            const safeStartId = (!startId || startId < 1) ? 10001 : startId;
 
             const btn = document.querySelector('button[onclick="processPhase3Action()"]');
             const originalHtml = btn.innerHTML;
@@ -6965,7 +6965,10 @@
                                     </div>
                                     <i class="fas fa-id-card text-indigo-300"></i>
                                 ` : `
-                                    <span class="text-[9px] text-slate-300 italic">นักเรียนใหม่</span>
+                                    <div class="text-right">
+                                        <div class="text-[10px] font-black text-amber-600">${s.newIdDisplay || '-'}</div>
+                                        <div class="text-[8px] text-amber-500 opacity-70 uppercase leading-none">ออกใหม่ (กรอกเอง)</div>
+                                    </div>
                                 `}
                             </div>
                         </div>
@@ -6975,8 +6978,8 @@
                     showToast("ขั้นตอนตรวจสอบ (ม.4)", "กรุณาตรวจสอบรหัสเดิมก่อนกดรันเลขใหม่", "info");
                 } else {
                     // M1: Run immediately
-                    await showPhase3Animation(students, startId);
-                    const msg = await savePhase3Results(students, startId, sortByAlphabet, preferExistingFirst);
+                    await showPhase3Animation(students, safeStartId);
+                    const msg = await savePhase3Results(students, safeStartId, sortByAlphabet, preferExistingFirst);
                     showToast("สำเร็จ", msg, "success");
                     const statusBox = document.getElementById('p3-status-box');
                     const statusText = document.getElementById('p3-status-text');

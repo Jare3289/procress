@@ -1341,6 +1341,7 @@ function getPhase3Students(level, sortByAlphabet = false, preferExistingFirst = 
     name: String(s.name || '(ไม่มีชื่อ)'),
     school: String(s.school || '-'),
     oldStudentId: String(s.oldStudentId || ''),
+    newIdDisplay: String(s.newIdDisplay || ''),
     idSource: String(s.idSource || 'new'),
     assignedRoom: String(s.assignedRoom || 'ไม่ระบุ'),
     totalScore: s.totalScore ? Number(s.totalScore).toFixed(3) : '0'
@@ -1447,17 +1448,24 @@ function processPhase3Ids(level, startId, sortByAlphabet = false, preferExisting
   });
 
   // Stage 1: กำหนดรหัสประจำตัว (Official Enrollment ID)
-  // (เรียงลำดับดั้งเดิม: ห้อง -> เพศ -> คะแนน/ชื่อ เพื่อแจกรหัสใหม่ตามลำดับความเก่ง/ลำดับคิวเดิม สำหรับเด็กใหม่)
-  let currentNewId = parseInt(startId) || 10001;
+  // เงื่อนไขใหม่: "นักเรียนเข้าใหม่" ต้องกรอกรหัสในคอลัมน์ "ออกใหม่" เอง (ไม่รันเลขอัตโนมัติ)
+  let missingManualIds = [];
   filteredStudents.forEach(s => {
     if (s.existingId && s.existingId.trim() !== "") {
         s._finalId = s.existingId;
-    } else if (s.oldStudentId && s.oldStudentId.trim() !== "") {
-        s._finalId = s.oldStudentId;
+    } else if (s.newIdDisplay && s.newIdDisplay.trim() !== "") {
+        s._finalId = s.newIdDisplay;
     } else {
-        s._finalId = String(currentNewId++);
+        s._finalId = '';
+        missingManualIds.push(String(s.name || '-'));
     }
   });
+
+  if (missingManualIds.length > 0) {
+    const previewNames = missingManualIds.slice(0, 5).join(', ');
+    const moreText = missingManualIds.length > 5 ? ` ... และอีก ${missingManualIds.length - 5} คน` : '';
+    throw new Error(`กรุณากรอกรหัสในคอลัมน์ "ออกใหม่" ให้ครบก่อนรัน (${missingManualIds.length} คน): ${previewNames}${moreText}`);
+  }
 
   // Stage 2: เรียงลำดับเพื่อลง "เลขที่" (Seat Number)
   // ผู้ใช้ต้องการ: 1. เรียงตามห้อง, 2. แยกชาย-หญิง (ชายก่อน), 3. เรียงตาม "รหัสประจำตัวนักเรียน" (น้อยไปมาก)

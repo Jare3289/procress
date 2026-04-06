@@ -1788,7 +1788,7 @@
 
                 <div class="card shadow-md border-t-4 border-orange-500 flex flex-col overflow-hidden">
                     <div class="bg-orange-50 px-5 py-3 border-b border-orange-100 flex justify-between items-center">
-                        <h3 class="font-bold text-orange-900 text-sm italic">รายชื่อสำรองเรียงตามคะแนน Merit</h3>
+                        <h3 class="font-bold text-orange-900 text-sm italic">รายชื่อสำรองเรียงตามคะแนน Merit (เฉพาะผู้มีสิทธิ์รอเลื่อนเข้าแผน)</h3>
                         <span id="waitlist-total-count"
                             class="bg-white text-orange-700 px-3 py-1 rounded-full text-[10px] font-black border border-orange-200 shadow-sm">0
                             คน</span>
@@ -1851,6 +1851,37 @@
                         </table>
                     </div>
                 </div>
+                <div class="card shadow-md border-t-4 border-amber-500 overflow-hidden anim-fade-in bg-white">
+                    <div class="bg-amber-50 px-5 py-4 border-b border-amber-100 flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                                <i class="fas fa-ban text-amber-600"></i> บัญชีรายชื่อผู้ปฏิเสธสิทธิ์การเลื่อน (Reject Upgrade)
+                            </h3>
+                            <p class="text-[10px] text-amber-700/70 mt-0.5">ผู้สมัครกลุ่มนี้คงสิทธิ์ที่เดิม และไม่ถูกนับในบัญชีสำรองรอเลื่อนรอบนี้</p>
+                        </div>
+                        <span id="mgmt-reject-count"
+                            class="bg-white text-amber-700 px-3 py-1 rounded-full text-[11px] font-black border border-amber-200 shadow-sm">0
+                            คน</span>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar max-h-[400px]">
+                        <table class="w-full text-[11px] whitespace-nowrap border-separate border-spacing-0">
+                            <thead class="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 shadow-sm">
+                                <tr class="text-slate-500 uppercase tracking-widest text-[9px] font-black">
+                                    <th class="w-24 py-3 border-r border-slate-100 text-center">รหัสประจำตัว</th>
+                                    <th class="text-left px-5 py-3 border-r border-slate-100">ชื่อ-นามสกุล</th>
+                                    <th class="text-center px-5 py-3 border-r border-slate-100">คงสิทธิ์ที่เดิม</th>
+                                    <th class="text-left px-5 py-3">หมายเหตุ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manage-reject-body">
+                                <tr>
+                                    <td colspan="4" class="py-12 text-center text-slate-300 italic">
+                                        ไม่มีข้อมูลผู้ปฏิเสธสิทธิ์</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1893,6 +1924,13 @@
                             <i class="fas fa-arrow-right-arrow-left mr-2"></i>เรียงตามตัวอักษรภาษาไทย (ละเว้นเพศ)
                         </label>
                     </div>
+                    <div class="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center gap-3">
+                        <input type="checkbox" id="sort-by-id-source"
+                            class="w-5 h-5 rounded border-emerald-300 cursor-pointer">
+                        <label for="sort-by-id-source" class="flex-1 cursor-pointer text-sm font-bold text-emerald-800">
+                            <i class="fas fa-layer-group mr-2"></i>เรียงใหม่ตามคอลัมน์ <b>มีอยู่</b> ก่อน <b>ออกใหม่</b> (ภายในห้องเดียวกัน)
+                        </label>
+                    </div>
 
                     <div
                         class="p-4 bg-orange-50 rounded-2xl border border-orange-100 text-[12px] text-orange-800 flex gap-3">
@@ -1900,6 +1938,10 @@
                         <span id="sort-info">การรันจะเรียงตาม: <b>ห้องลำดับน้อยไปมาก</b> &rarr; <b>เพศชายก่อนหญิง</b>
                             &rarr;
                             <b>คะแนนจากมากไปน้อย</b></span>
+                    </div>
+                    <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800">
+                        <i class="fas fa-pen mr-1"></i>
+                        นักเรียนเข้าใหม่ต้องกรอกรหัสในคอลัมน์ <b>ออกใหม่</b> เองก่อนรัน (ระบบจะไม่รันเลขอัตโนมัติ)
                     </div>
                 </div>
 
@@ -2333,6 +2375,7 @@
                     origPlan: s.assignedPlan, // Store for opt-out locking
                     origRoom: s.assignedRoom,
                     origCode: s.statusCode,
+                    origStatus: s.status || '-',
                     status: '-',
                     waitlistRanks: {},
                     isDropped: override?.type === 'dropped'
@@ -2525,7 +2568,7 @@
 
             // Unified list of anyone NOT seated
             const globalWaitPool = pool
-                .filter(s => !s.assignedPlan && !isExcluded(s))
+                .filter(s => !s.assignedPlan && !isExcluded(s) && !activeOptOuts.has(String(s.id)))
                 .sort(meritSort);
 
             globalWaitPool.forEach((s, idx) => {
@@ -2585,11 +2628,21 @@
                     s.statusCode = '-';
                 }
                 // Mark opted-out students
-                if (activeOptOuts.has(String(s.id))) {
-                    s.status = 'ปฏิเสธสิทธิ์';
-                    s.assignedPlan = null;
-                    s.assignedRoom = '-';
-                    s.statusCode = '-';
+                if (!s.isDropped && activeOptOuts.has(String(s.id))) {
+                    // ปฏิเสธสิทธิ์ = คงที่เดิม (ไม่ย้ายไปบัญชีสำรองอัตโนมัติ)
+                    const hadOriginalSeat = s.origPlan && s.origPlan !== '-' && s.origRoom && s.origRoom !== '-';
+                    if (hadOriginalSeat) {
+                        s.assignedPlan = s.origPlan;
+                        s.assignedRoom = s.origRoom;
+                        s.statusCode = s.origCode || s.statusCode || '-';
+                        s.status = 'ปฏิเสธสิทธิ์ (คงที่เดิม)';
+                    } else {
+                        // ถ้าเดิมไม่มีที่นั่ง ให้คงอยู่บัญชีเดิม (เช่น สำรอง) และข้ามการเลื่อนรอบนี้
+                        s.assignedPlan = s.origPlan || null;
+                        s.assignedRoom = s.origRoom || '-';
+                        s.statusCode = s.origCode || '-';
+                        s.status = (s.origStatus && s.origStatus !== '-') ? s.origStatus : 'สำรอง';
+                    }
                 }
                 return s;
             });
@@ -4671,7 +4724,10 @@
             }
             const countLabel = document.getElementById('waitlist-total-count');
 
-            const data = waitlists["รวมทั้งหมด"] || [];
+            const data = (waitlists["รวมทั้งหมด"] || []).filter(item => {
+                const st = item.status || '';
+                return !st.includes('สละสิทธิ์') && !st.includes('ปฏิเสธสิทธิ์');
+            });
             tbody.innerHTML = '';
 
             if (data.length === 0) {
@@ -4722,6 +4778,7 @@
 
             const all = State.results.allStudents;
             const tbody = document.getElementById('mgmt-table-body');
+            const extraSection = document.getElementById('mgmt-extra-sections');
             tbody.innerHTML = '';
 
             // Statistics
@@ -4935,21 +4992,27 @@
             }
 
             const waivedBody = document.getElementById('manage-waived-body');
+            const rejectBody = document.getElementById('manage-reject-body');
             waivedBody.innerHTML = '';
+            rejectBody.innerHTML = '';
 
             let waivedCount = 0;
+            let rejectCount = 0;
 
-            const remainder = all.filter(s => !s.assignedRoom || !s.assignedPlan || !planCodes[s.assignedPlan] || s.status.includes('สละสิทธิ์'));
+            const remainder = all.filter(s =>
+                !s.assignedRoom || !s.assignedPlan || !planCodes[s.assignedPlan] ||
+                (s.status || '').includes('สละสิทธิ์') || (s.status || '').includes('ปฏิเสธสิทธิ์')
+            );
 
             if (remainder.length > 0) {
-                document.getElementById('mgmt-extra-tables').style.display = 'grid';
+                if (extraSection) extraSection.classList.remove('hidden');
 
                 // Show Plan-based Waitlists directly in management tab too
                 if (document.getElementById('waitlists-section')) {
                     document.getElementById('waitlists-section').classList.remove('hidden');
                 }
 
-                remainder.filter(s => s.status.includes('สละสิทธิ์')).forEach(s => {
+                remainder.filter(s => (s.status || '').includes('สละสิทธิ์')).forEach(s => {
                     waivedCount++;
                     const tr = document.createElement('tr');
                     tr.className = "border-b border-red-50 hover:bg-red-50/50";
@@ -4960,11 +5023,35 @@
                     `;
                     waivedBody.appendChild(tr);
                 });
+
+                remainder.filter(s => (s.status || '').includes('ปฏิเสธสิทธิ์')).forEach(s => {
+                    rejectCount++;
+                    const currentLoc = (s.assignedPlan && s.assignedRoom && s.assignedRoom !== '-')
+                        ? `${s.assignedPlan} (${s.assignedRoom})`
+                        : 'บัญชีเดิม/สำรอง';
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-amber-50 hover:bg-amber-50/50";
+                    tr.innerHTML = `
+                        <td class="text-center font-mono font-bold text-slate-700">${s.id || '-'}</td>
+                        <td class="text-left font-bold text-slate-800">${s.name || '-'}</td>
+                        <td class="text-center text-[10px] font-bold text-amber-700">${currentLoc}</td>
+                        <td class="text-left text-[10px] text-slate-600">${s.remark || '-'}</td>
+                    `;
+                    rejectBody.appendChild(tr);
+                });
             } else {
                 if (extraSection) extraSection.classList.add('hidden');
             }
 
+            if (waivedCount === 0) {
+                waivedBody.innerHTML = `<tr><td colspan="3" class="py-12 text-center text-slate-300 italic">ไม่มีข้อมูลผู้สละสิทธิ์</td></tr>`;
+            }
+            if (rejectCount === 0) {
+                rejectBody.innerHTML = `<tr><td colspan="4" class="py-12 text-center text-slate-300 italic">ไม่มีข้อมูลผู้ปฏิเสธสิทธิ์</td></tr>`;
+            }
+
             document.getElementById('mgmt-waived-count').innerText = `${waivedCount} คน`;
+            document.getElementById('mgmt-reject-count').innerText = `${rejectCount} คน`;
 
             // Populate individual waitlist tables for Science, Talent, Math, Language
             if (State.results?.waitlists) {
@@ -6440,12 +6527,16 @@
                 tempOptOuts.delete(currentStudentIdForManage);
             } else if (action === 'drop') {
                 tempOverridesMap.set(currentStudentIdForManage, { type: 'dropped' });
+                tempOptOuts.delete(currentStudentIdForManage);
             } else if (action === 'reject') {
                 tempOptOuts.set(currentStudentIdForManage, { bypassed: true });
             }
 
             // Run simulation (รวม bypass จากรอบนี้ด้วย)
             const mergedOptOuts = new Map([...State.optOuts, ...tempOptOuts]);
+            if (action === 'drop' || action === 'auto') {
+                mergedOptOuts.delete(currentStudentIdForManage);
+            }
             const simRes = runQueueWithRoomsEngine(undefined, tempOverridesMap, mergedOptOuts);
             if (!simRes || !simRes.allStudents) {
                 showToast("จำลองล้มเหลว", "เครื่องยนต์ประมวลผลขัดข้อง", "error");
@@ -6607,7 +6698,7 @@
 
             // 🔥 สำคัญ: อัปเดต State.optOuts จากทั้งรอบนี้และที่สะสมมา
             tempOptOuts.forEach((v, k) => State.optOuts.set(k, v));
-            if (action === 'auto') State.optOuts.delete(currentStudentIdForManage);
+            if (action === 'auto' || action === 'drop') State.optOuts.delete(currentStudentIdForManage);
             else if (action === 'reject') State.optOuts.set(currentStudentIdForManage, { bypassed: true });
 
             tempOptOuts = new Map();
@@ -6651,12 +6742,12 @@
         /**
          * โหลดข้อมูลนักเรียนสำหรับ Phase 3 จากชีต _Class_By_Room_Final
          */
-        async function loadPhase3Data(sortByAlphabet = false) {
+        async function loadPhase3Data(sortByAlphabet = false, preferExistingFirst = false) {
             return new Promise((resolve, reject) => {
                 google.script.run
                     .withSuccessHandler(resolve)
                     .withFailureHandler(reject)
-                    .getPhase3Students(State.currentLevel, sortByAlphabet);
+                    .getPhase3Students(State.currentLevel, sortByAlphabet, preferExistingFirst);
             });
         }
 
@@ -6674,14 +6765,13 @@
             studentList.innerHTML = '';
             progressBar.style.width = '0%';
             progressText.textContent = '0%';
-            currentIdDisplay.textContent = startId;
+            currentIdDisplay.textContent = '-';
 
-            let currentId = parseInt(startId);
             const totalStudents = students.length;
 
             // สร้างรายการนักเรียน
             students.forEach((student, index) => {
-                const isCNP = String(student.school || '').includes('ชัยนาทพิทยาคม') && student.oldStudentId;
+                const isCNP = student.idSource === 'existing' || !!student.oldStudentId;
                 const studentDiv = document.createElement('div');
                 studentDiv.className = 'flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 mb-3 transition-all duration-300 transform opacity-60';
                 studentDiv.id = `student-${index}`;
@@ -6698,7 +6788,7 @@
                         <i class="fas fa-check-circle text-slate-300" style="font-size: 18px;"></i>
                         <div class="text-right">
                             <div class="text-2xl font-black text-slate-400" id="id-${index}">-</div>
-                            <div class="text-[10px] text-slate-400 font-bold">${isCNP ? 'รหัสเดิม' : 'รหัสใหม่'}</div>
+                            <div class="text-[10px] text-slate-400 font-bold">${isCNP ? 'รหัสเดิม' : 'รหัสที่กรอกเอง'}</div>
                         </div>
                     </div>
                 `;
@@ -6709,13 +6799,13 @@
             for (let i = 0; i < students.length; i++) {
                 const studentDiv = document.getElementById(`student-${i}`);
                 const idDisplay = document.getElementById(`id-${i}`);
-                const isCNP = String(students[i].school || '').includes('ชัยนาทพิทยาคม') && students[i].oldStudentId;
+                const isCNP = students[i].idSource === 'existing' || !!students[i].oldStudentId;
                 let idToShow = "";
 
                 if (isCNP) {
                     idToShow = students[i].oldStudentId;
                 } else {
-                    idToShow = currentId++;
+                    idToShow = students[i].newIdDisplay || '(ยังไม่กรอก)';
                 }
 
                 // Highlight student ปัจจุบัน (gradient + glow + scale)
@@ -6739,7 +6829,7 @@
                 const progress = ((i + 1) / totalStudents) * 100;
                 progressBar.style.width = `${progress}%`;
                 progressText.textContent = Math.round(progress) + '%';
-                currentIdDisplay.textContent = currentId;
+                currentIdDisplay.textContent = idToShow;
 
                 // Scroll ให้ตัวปัจจุบันอยู่ตรงกลาง
                 studentDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -6763,7 +6853,6 @@
                     prevId.className = 'text-2xl font-black text-green-600';
                 }
 
-                currentId++;
             }
 
             // เสร็จแล้วรออีก 50ms
@@ -6773,12 +6862,12 @@
         /**
          * บันทึกผลลัพธ์ Phase 3
          */
-        async function savePhase3Results(students, startId, sortByAlphabet = false) {
+        async function savePhase3Results(students, startId, sortByAlphabet = false, preferExistingFirst = false) {
             return new Promise((resolve, reject) => {
                 google.script.run
                     .withSuccessHandler(resolve)
                     .withFailureHandler(reject)
-                    .processPhase3Ids(State.currentLevel, startId, sortByAlphabet);
+                    .processPhase3Ids(State.currentLevel, startId, sortByAlphabet, preferExistingFirst);
             });
         }
 
@@ -6790,8 +6879,11 @@
         async function executePhase3FinalRun() {
             const startIdInput = document.getElementById('start-student-id');
             const sortByAlphabetCheckbox = document.getElementById('sort-by-alphabet');
+            const sortByIdSourceCheckbox = document.getElementById('sort-by-id-source');
             const startId = startIdInput ? parseInt(startIdInput.value) : 10001;
+            const safeStartId = (!startId || startId < 1) ? 10001 : startId;
             const sortByAlphabet = sortByAlphabetCheckbox ? sortByAlphabetCheckbox.checked : false;
+            const preferExistingFirst = sortByIdSourceCheckbox ? sortByIdSourceCheckbox.checked : false;
 
             if (p3TempStudents.length === 0) return;
 
@@ -6799,8 +6891,8 @@
             document.getElementById('p3-preview-container').classList.add('hidden');
 
             // Start process
-            await showPhase3Animation(p3TempStudents, startId);
-            const msg = await savePhase3Results(p3TempStudents, startId, sortByAlphabet);
+            await showPhase3Animation(p3TempStudents, safeStartId);
+            const msg = await savePhase3Results(p3TempStudents, safeStartId, sortByAlphabet, preferExistingFirst);
 
             showToast("สำเร็จ", msg, "success");
             const statusBox = document.getElementById('p3-status-box');
@@ -6815,13 +6907,12 @@
         async function processPhase3Action() {
             const startIdInput = document.getElementById('start-student-id');
             const sortByAlphabetCheckbox = document.getElementById('sort-by-alphabet');
+            const sortByIdSourceCheckbox = document.getElementById('sort-by-id-source');
             const startId = startIdInput ? parseInt(startIdInput.value) : 10001;
             const sortByAlphabet = sortByAlphabetCheckbox ? sortByAlphabetCheckbox.checked : false;
+            const preferExistingFirst = sortByIdSourceCheckbox ? sortByIdSourceCheckbox.checked : false;
 
-            if (!startId || startId < 1) {
-                showToast("ข้อมูลไม่ถูกต้อง", "กรุณาระบุเลขประจำตัวเริ่มต้นที่ถูกต้อง", "warning");
-                return;
-            }
+            const safeStartId = (!startId || startId < 1) ? 10001 : startId;
 
             const btn = document.querySelector('button[onclick="processPhase3Action()"]');
             const originalHtml = btn.innerHTML;
@@ -6834,7 +6925,7 @@
                     google.script.run
                         .withSuccessHandler(resolve)
                         .withFailureHandler(reject)
-                        .getPhase3Students(State.currentLevel, sortByAlphabet);
+                        .getPhase3Students(State.currentLevel, sortByAlphabet, preferExistingFirst);
                 });
 
                 if (!students || students.length === 0) {
@@ -6859,7 +6950,7 @@
                     previewContainer.classList.remove('hidden');
                     previewCount.innerText = `${students.length} คน`;
                     previewList.innerHTML = students.map((s, idx) => {
-                        const isOld = String(s.school || '').includes('ชัยนาทพิทยาคม') && s.oldStudentId;
+                        const isOld = s.idSource === 'existing' || (String(s.school || '').includes('ชัยนาทพิทยาคม') && s.oldStudentId);
                         return `
                         <div class="flex items-center justify-between p-2.5 border-b border-orange-100 last:border-0 hover:bg-orange-50/50 transition">
                             <div class="flex-1 min-w-0">
@@ -6874,7 +6965,10 @@
                                     </div>
                                     <i class="fas fa-id-card text-indigo-300"></i>
                                 ` : `
-                                    <span class="text-[9px] text-slate-300 italic">นักเรียนใหม่</span>
+                                    <div class="text-right">
+                                        <div class="text-[10px] font-black text-amber-600">${s.newIdDisplay || '-'}</div>
+                                        <div class="text-[8px] text-amber-500 opacity-70 uppercase leading-none">ออกใหม่ (กรอกเอง)</div>
+                                    </div>
                                 `}
                             </div>
                         </div>
@@ -6884,8 +6978,8 @@
                     showToast("ขั้นตอนตรวจสอบ (ม.4)", "กรุณาตรวจสอบรหัสเดิมก่อนกดรันเลขใหม่", "info");
                 } else {
                     // M1: Run immediately
-                    await showPhase3Animation(students, startId);
-                    const msg = await savePhase3Results(students, startId, sortByAlphabet);
+                    await showPhase3Animation(students, safeStartId);
+                    const msg = await savePhase3Results(students, safeStartId, sortByAlphabet, preferExistingFirst);
                     showToast("สำเร็จ", msg, "success");
                     const statusBox = document.getElementById('p3-status-box');
                     const statusText = document.getElementById('p3-status-text');
@@ -6904,16 +6998,23 @@
         // Event listener เพื่ออัปเดต info text เมื่อเลือก/ไม่เลือก checkbox
         document.addEventListener('DOMContentLoaded', () => {
             const sortByAlphabetCheckbox = document.getElementById('sort-by-alphabet');
+            const sortByIdSourceCheckbox = document.getElementById('sort-by-id-source');
             const sortInfoText = document.getElementById('sort-info');
 
-            if (sortByAlphabetCheckbox && sortInfoText) {
-                sortByAlphabetCheckbox.addEventListener('change', function () {
-                    if (this.checked) {
-                        sortInfoText.innerHTML = 'การรันจะเรียงตาม: <b>ห้องลำดับน้อยไปมาก</b> &rarr; <b>ตัวอักษรภาษาไทย (ก, ข, ค...)</b>';
-                    } else {
-                        sortInfoText.innerHTML = 'การรันจะเรียงตาม: <b>ห้องลำดับน้อยไปมาก</b> &rarr; <b>เพศชายก่อนหญิง</b> &rarr; <b>คะแนนจากมากไปน้อย</b>';
-                    }
-                });
+            const refreshPhase3SortInfo = () => {
+                const alpha = sortByAlphabetCheckbox ? sortByAlphabetCheckbox.checked : false;
+                const bySource = sortByIdSourceCheckbox ? sortByIdSourceCheckbox.checked : false;
+                const parts = ['<b>ห้องลำดับน้อยไปมาก</b>'];
+                if (bySource) parts.push('<b>มีอยู่ก่อนออกใหม่</b>');
+                if (alpha) parts.push('<b>ตัวอักษรภาษาไทย (ก, ข, ค...)</b>');
+                else parts.push('<b>เพศชายก่อนหญิง</b>', '<b>คะแนนจากมากไปน้อย</b>');
+                sortInfoText.innerHTML = `การรันจะเรียงตาม: ${parts.join(' &rarr; ')}`;
+            };
+
+            if (sortInfoText) {
+                if (sortByAlphabetCheckbox) sortByAlphabetCheckbox.addEventListener('change', refreshPhase3SortInfo);
+                if (sortByIdSourceCheckbox) sortByIdSourceCheckbox.addEventListener('change', refreshPhase3SortInfo);
+                refreshPhase3SortInfo();
             }
         });
     </script>

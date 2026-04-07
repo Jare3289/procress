@@ -2620,6 +2620,22 @@
                 }
             });
 
+            // 9. HARD CAP ENFORCEMENT: บังคับไม่ให้ห้องใดเกิน 40 คน (กันกรณีข้อมูลสะสม/แก้ไขพิเศษ)
+            roomList.forEach(room => {
+                const seatedInRoom = pool
+                    .filter(s => s.assignedRoom === room.roomLabel)
+                    .sort(meritSort);
+                if (seatedInRoom.length > 40) {
+                    const overflow = seatedInRoom.slice(40);
+                    overflow.forEach(s => {
+                        s.assignedPlan = null;
+                        s.assignedRoom = '-';
+                        s.statusCode = '-';
+                        s.status = 'สำรอง (ปรับลดจากห้องเกิน 40)';
+                    });
+                }
+            });
+
             results.allStudents = pool.map(s => {
                 if (s.isDropped) {
                     s.status = 'สละสิทธิ์ (ยืนยัน)';

@@ -6520,6 +6520,9 @@
          */
         async function simulateAndConfirm() {
             tempOverridesMap = new Map(State.overrides);
+            const baseInputData = (State.results && State.results.allStudents && State.results.allStudents.length > 0)
+                ? State.results.allStudents
+                : undefined;
 
             let action = document.getElementById('m-action').value;
             if (action === 'auto') {
@@ -6537,7 +6540,7 @@
             if (action === 'drop' || action === 'auto') {
                 mergedOptOuts.delete(currentStudentIdForManage);
             }
-            const simRes = runQueueWithRoomsEngine(undefined, tempOverridesMap, mergedOptOuts);
+            const simRes = runQueueWithRoomsEngine(baseInputData, tempOverridesMap, mergedOptOuts);
             if (!simRes || !simRes.allStudents) {
                 showToast("จำลองล้มเหลว", "เครื่องยนต์ประมวลผลขัดข้อง", "error");
                 return;
@@ -6666,9 +6669,12 @@
             const currentResults = (State.results && State.results.allStudents) ? State.results.allStudents : [];
             const action = document.getElementById('m-action').value;
             const mergedTempOptOuts = new Map([...State.optOuts, ...tempOptOuts]);
+            const baseInputData = (State.results && State.results.allStudents && State.results.allStudents.length > 0)
+                ? State.results.allStudents
+                : undefined;
 
             // First run to get the final state
-            const finalResults = runQueueWithRoomsEngine(undefined, tempOverridesMap, mergedTempOptOuts);
+            const finalResults = runQueueWithRoomsEngine(baseInputData, tempOverridesMap, mergedTempOptOuts);
 
             // Compare and build audit logs
             let changesToLog = [];
@@ -6728,7 +6734,7 @@
 
             // Re-run the engine with updated rawStudents remarks
             const mergedOptOuts = new Map(State.optOuts);
-            State.results = runQueueWithRoomsEngine(undefined, State.overrides, mergedOptOuts);
+            State.results = runQueueWithRoomsEngine(baseInputData, State.overrides, mergedOptOuts);
 
             // Update all relevant UI components
             rebuildWaitlistsAndRender();

@@ -6491,6 +6491,7 @@
             select.innerHTML = `
                 <option value="auto" ${!isDropped ? 'selected' : ''}>ตกลงรับสิทธิ์ (คืนสิทธิ์การเลื่อน)</option>
                 <option value="reject" ${State.optOuts.has(currentStudentIdForManage) ? 'selected' : ''}>ปฏิเสธการเลื่อน (คงที่เดิม)</option>
+                <option value="swap">สลับห้องกับรหัสอื่น (ไม่วิเคราะห์ผลกระทบ)</option>
                 <option value="drop" ${isDropped ? 'selected' : ''}>บันทึกสละสิทธิ์ (Record Waiver)</option>
             `;
 
@@ -6525,6 +6526,29 @@
                 : undefined;
 
             let action = document.getElementById('m-action').value;
+            if (action === 'swap') {
+                const currentResults = (State.results && State.results.allStudents) ? State.results.allStudents : [];
+                const target = currentResults.find(s => String(s.id) === String(currentStudentIdForManage));
+                if (!target || !target.assignedRoom || target.assignedRoom === '-') {
+                    showToast("สลับไม่ได้", "นักเรียนหลักยังไม่มีห้องที่สามารถสลับได้", "warning");
+                    return;
+                }
+                const partnerId = prompt(`กรอกรหัสนักเรียนที่จะสลับห้องกับ ${target.name} (${target.assignedRoom})`);
+                if (!partnerId) return;
+                const partner = currentResults.find(s => String(s.id) === String(partnerId).trim());
+                if (!partner || !partner.assignedRoom || partner.assignedRoom === '-') {
+                    showToast("ไม่พบคู่สลับ", "ไม่พบรหัสปลายทาง หรือปลายทางยังไม่มีห้อง", "warning");
+                    return;
+                }
+                if (String(partner.id) === String(target.id)) {
+                    showToast("ข้อมูลไม่ถูกต้อง", "ไม่สามารถสลับกับตัวเองได้", "warning");
+                    return;
+                }
+                window.__swapTargetId = String(partner.id);
+                await commitChange();
+                return;
+            }
+
             if (action === 'auto') {
                 tempOverridesMap.delete(currentStudentIdForManage);
                 tempOptOuts.delete(currentStudentIdForManage);
@@ -6668,6 +6692,58 @@
 
             const currentResults = (State.results && State.results.allStudents) ? State.results.allStudents : [];
             const action = document.getElementById('m-action').value;
+            if (action === 'swap') {
+                const sidA = String(currentStudentIdForManage);
+                const sidB = String(window.__swapTargetId || '');
+                const a = currentResults.find(s => String(s.id) === sidA);
+                const b = currentResults.find(s => String(s.id) === sidB);
+                if (!a || !b) {
+                    showToast("สลับไม่สำเร็จ", "ไม่พบข้อมูลนักเรียนสำหรับการสลับห้อง", "error");
+                    return;
+                }
+                const aRoom = a.assignedRoom, aPlan = a.assignedPlan, aCode = a.statusCode;
+                const bRoom = b.assignedRoom, bPlan = b.assignedPlan, bCode = b.statusCode;
+                a.assignedRoom = bRoom; a.assignedPlan = bPlan; a.statusCode = bCode;
+                b.assignedRoom = aRoom; b.assignedPlan = aPlan; b.statusCode = aCode;
+                if (a.assignedPlan) a.status = `ตัวจริง ${a.assignedPlan}`;
+                if (b.assignedPlan) b.status = `ตัวจริง ${b.assignedPlan}`;
+
+                const timeStr = new Date().toLocaleTimeString('th-TH', { timeStyle: 'short' });
+                const noteA = `[${timeStr}] สลับห้องกับ ${b.id} (${aRoom} -> ${a.assignedRoom})`;
+                const noteB = `[${timeStr}] สลับห้องกับ ${a.id} (${bRoom} -> ${b.assignedRoom})`;
+                a.remark = a.remark ? `${a.remark} | ${noteA}` : noteA;
+                b.remark = b.remark ? `${b.remark} | ${noteB}` : noteB;
+
+                [a, b].forEach(ns => {
+                    let rawS = State.rawStudents.find(s => String(s.id) === String(ns.id));
+                    if (rawS) {
+                        rawS.assignedRoom = ns.assignedRoom;
+                        rawS.assignedPlan = ns.assignedPlan;
+                        rawS.statusCode = ns.statusCode;
+                        rawS.status = ns.status;
+                        rawS.remark = ns.remark;
+                    }
+                    if (State.queueData) {
+                        let qS = State.queueData.find(s => String(s.id) === String(ns.id));
+                        if (qS) {
+                            qS.assignedRoom = ns.assignedRoom;
+                            qS.assignedPlan = ns.assignedPlan;
+                            qS.statusCode = ns.statusCode;
+                            qS.status = ns.status;
+                            qS.remark = ns.remark;
+                        }
+                    }
+                });
+
+                State.results.allStudents = currentResults;
+                window.__swapTargetId = null;
+                rebuildWaitlistsAndRender();
+                renderManagementTab();
+                closeModal('modal-manage');
+                showToast("สลับสำเร็จ", `สลับห้องระหว่าง ${a.id} และ ${b.id} เรียบร้อยแล้ว`, "success");
+                return;
+            }
+
             const mergedTempOptOuts = new Map([...State.optOuts, ...tempOptOuts]);
             const baseInputData = (State.results && State.results.allStudents && State.results.allStudents.length > 0)
                 ? State.results.allStudents
@@ -6710,13 +6786,21 @@
             tempOptOuts = new Map();
 
             // Update rawStudents so remarks are persisted across reruns
+            const finalMap = new Map((finalResults.allStudents || []).map(s => [String(s.id), s]));
             changesToLog.forEach(change => {
+                const latest = finalMap.get(String(change.id));
                 let rawS = State.rawStudents.find(s => String(s.id) === String(change.id));
                 if (rawS) {
                     if (rawS.remark) {
                         if (!rawS.remark.includes(change.msg)) rawS.remark += " | " + change.msg;
                     } else {
                         rawS.remark = change.msg;
+                    }
+                    if (latest) {
+                        rawS.assignedRoom = latest.assignedRoom;
+                        rawS.assignedPlan = latest.assignedPlan;
+                        rawS.statusCode = latest.statusCode;
+                        rawS.status = latest.status;
                     }
                 }
                 if (State.queueData) {
@@ -6727,6 +6811,12 @@
                             if (!queueS.remark.includes(change.msg)) queueS.remark += " | " + change.msg;
                         } else {
                             queueS.remark = change.msg;
+                        }
+                        if (latest) {
+                            queueS.assignedRoom = latest.assignedRoom;
+                            queueS.assignedPlan = latest.assignedPlan;
+                            queueS.statusCode = latest.statusCode;
+                            queueS.status = latest.status;
                         }
                     }
                 }

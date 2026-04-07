@@ -1230,7 +1230,7 @@ function getOldIdLookupMap() {
   return map;
 }
 
-function getPhase3Students(level, sortByAlphabet = false) {
+function getPhase3Students(level, sortByAlphabet = false, preferExistingFirst = false) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rawSheetName = `${level}_Class_By_Room_Final`;
   const sheet = ss.getSheetByName(rawSheetName);
@@ -1260,6 +1260,8 @@ function getPhase3Students(level, sortByAlphabet = false) {
     const hStr = String(h).trim();
     return hStr === 'โรงเรียนเดิม' || hStr === 'โรงเรียน';
   });
+  const existingIdColIdx = headersInRaw.findIndex(h => String(h).trim() === 'มีอยู่');
+  const newIdColIdx = headersInRaw.findIndex(h => String(h).trim() === 'ออกใหม่');
 
   // Lookup รหัสเดิมจาก Sheet1 สดๆ เผื่อในชีตนี้ไม่มีข้อมูล หรือข้อมูลผิด
   const oldIdLookup = getOldIdLookupMap();
@@ -1275,10 +1277,13 @@ function getPhase3Students(level, sortByAlphabet = false) {
     if (roomColIdx >= 0) s.assignedRoom = row[roomColIdx];
     if (scoreColIdx >= 0) s.totalScore = row[scoreColIdx];
     if (schoolColIdx >= 0) s.school = row[schoolColIdx];
+    s.existingId = existingIdColIdx >= 0 ? String(row[existingIdColIdx] || '').trim() : '';
+    s.newIdDisplay = newIdColIdx >= 0 ? String(row[newIdColIdx] || '').trim() : '';
     
     // Lookup รหัสเดิมจาก Sheet1 โดยใช้เลขประจำตัวผู้สอบ (Examination ID)
     const examIdKey = String(s['เลขประจำตัว'] || s['เลขประจำตัวผู้สอบ'] || '').trim();
-    s.oldStudentId = oldIdLookup[examIdKey] || "";
+    s.oldStudentId = s.existingId || oldIdLookup[examIdKey] || "";
+    s.idSource = s.oldStudentId ? 'existing' : 'new';
     return s;
   });
 
@@ -1309,6 +1314,12 @@ function getPhase3Students(level, sortByAlphabet = false) {
       return ra - rb;
     }
 
+    if (preferExistingFirst) {
+      const sa = a.idSource === 'existing' ? 1 : 2;
+      const sb = b.idSource === 'existing' ? 1 : 2;
+      if (sa !== sb) return sa - sb;
+    }
+
     // เรียงตามเพศ (ชายก่อน) ก่อนเสมอ
     const ga = isBoy(a.name) ? 1 : 2;
     const gb = isBoy(b.name) ? 1 : 2;
@@ -1330,12 +1341,14 @@ function getPhase3Students(level, sortByAlphabet = false) {
     name: String(s.name || '(ไม่มีชื่อ)'),
     school: String(s.school || '-'),
     oldStudentId: String(s.oldStudentId || ''),
+    newIdDisplay: String(s.newIdDisplay || ''),
+    idSource: String(s.idSource || 'new'),
     assignedRoom: String(s.assignedRoom || 'ไม่ระบุ'),
     totalScore: s.totalScore ? Number(s.totalScore).toFixed(3) : '0'
   }));
 }
 
-function processPhase3Ids(level, startId, sortByAlphabet = false) {
+function processPhase3Ids(level, startId, sortByAlphabet = false, preferExistingFirst = false) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rawSheetName = `${level}_Class_By_Room_Final`;
   const sheet = ss.getSheetByName(rawSheetName);
@@ -1364,6 +1377,8 @@ function processPhase3Ids(level, startId, sortByAlphabet = false) {
     const hStr = String(h).trim();
     return hStr === 'โรงเรียนเดิม' || hStr === 'โรงเรียน';
   });
+  const existingIdColIdx = headersInRaw.findIndex(h => String(h).trim() === 'มีอยู่');
+  const newIdColIdx = headersInRaw.findIndex(h => String(h).trim() === 'ออกใหม่');
   
   // Lookup รหัสเดิมจาก Sheet1 สดๆ
   const oldIdLookup = getOldIdLookupMap();
@@ -1379,10 +1394,13 @@ function processPhase3Ids(level, startId, sortByAlphabet = false) {
     if (roomColIdx >= 0) s.assignedRoom = row[roomColIdx];
     if (scoreColIdx >= 0) s.totalScore = row[scoreColIdx];
     if (schoolColIdx >= 0) s.school = row[schoolColIdx];
+    s.existingId = existingIdColIdx >= 0 ? String(row[existingIdColIdx] || '').trim() : '';
+    s.newIdDisplay = newIdColIdx >= 0 ? String(row[newIdColIdx] || '').trim() : '';
     
     // Lookup รหัสเดิมจาก Sheet1 โดยใช้เลขประจำตัวผู้สอบ (Examination ID)
     const examIdKey = String(s['เลขประจำตัว'] || s['เลขประจำตัวผู้สอบ'] || '').trim();
-    s.oldStudentId = oldIdLookup[examIdKey] || "";
+    s.oldStudentId = s.existingId || oldIdLookup[examIdKey] || "";
+    s.idSource = s.oldStudentId ? 'existing' : 'new';
     return s;
   });
 
@@ -1410,6 +1428,12 @@ function processPhase3Ids(level, startId, sortByAlphabet = false) {
     const rb = getRoomNumber(b.assignedRoom);
     if (ra !== rb) return ra - rb;
 
+    if (preferExistingFirst) {
+      const sa = a.idSource === 'existing' ? 1 : 2;
+      const sb = b.idSource === 'existing' ? 1 : 2;
+      if (sa !== sb) return sa - sb;
+    }
+
     const ga = isBoy(a.name) ? 1 : 2;
     const gb = isBoy(b.name) ? 1 : 2;
     if (ga !== gb) return ga - gb;
@@ -1424,15 +1448,24 @@ function processPhase3Ids(level, startId, sortByAlphabet = false) {
   });
 
   // Stage 1: กำหนดรหัสประจำตัว (Official Enrollment ID)
-  // (เรียงลำดับดั้งเดิม: ห้อง -> เพศ -> คะแนน/ชื่อ เพื่อแจกรหัสใหม่ตามลำดับความเก่ง/ลำดับคิวเดิม สำหรับเด็กใหม่)
-  let currentNewId = parseInt(startId) || 10001;
+  // เงื่อนไขใหม่: "นักเรียนเข้าใหม่" ต้องกรอกรหัสในคอลัมน์ "ออกใหม่" เอง (ไม่รันเลขอัตโนมัติ)
+  let missingManualIds = [];
   filteredStudents.forEach(s => {
-    if (s.oldStudentId && s.oldStudentId.trim() !== "") {
-        s._finalId = s.oldStudentId;
+    if (s.existingId && s.existingId.trim() !== "") {
+        s._finalId = s.existingId;
+    } else if (s.newIdDisplay && s.newIdDisplay.trim() !== "") {
+        s._finalId = s.newIdDisplay;
     } else {
-        s._finalId = String(currentNewId++);
+        s._finalId = '';
+        missingManualIds.push(String(s.name || '-'));
     }
   });
+
+  if (missingManualIds.length > 0) {
+    const previewNames = missingManualIds.slice(0, 5).join(', ');
+    const moreText = missingManualIds.length > 5 ? ` ... และอีก ${missingManualIds.length - 5} คน` : '';
+    throw new Error(`กรุณากรอกรหัสในคอลัมน์ "ออกใหม่" ให้ครบก่อนรัน (${missingManualIds.length} คน): ${previewNames}${moreText}`);
+  }
 
   // Stage 2: เรียงลำดับเพื่อลง "เลขที่" (Seat Number)
   // ผู้ใช้ต้องการ: 1. เรียงตามห้อง, 2. แยกชาย-หญิง (ชายก่อน), 3. เรียงตาม "รหัสประจำตัวนักเรียน" (น้อยไปมาก)
@@ -1477,7 +1510,8 @@ function processPhase3Ids(level, startId, sortByAlphabet = false) {
   outSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#c2410c').setFontColor('white');
   
   const sortMethod = sortByAlphabet ? 'ตัวอักษรภาษาไทย' : 'เพศ (ชายก่อน)';
-  return `รันเลขประจำตัวเสร็จสมบูรณ์! (เรียงตาม: ${sortMethod}, รวม: ${filteredStudents.length} คน) - แผ่นงาน: ${outputSheetName}`;
+  const extraRule = preferExistingFirst ? ', มีอยู่ก่อนออกใหม่' : '';
+  return `รันเลขประจำตัวเสร็จสมบูรณ์! (เรียงตาม: ${sortMethod}${extraRule}, รวม: ${filteredStudents.length} คน) - แผ่นงาน: ${outputSheetName}`;
 }
 
 function getPhase25Data(levelStr) {
